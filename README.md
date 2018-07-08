@@ -10,3 +10,10 @@ but it might be more convenient to look through the code and play around with it
 ## Testing
 I implemented simple tests with [pytest](https://pytest.org) to check the validity of the code, mostly the basics in `lra/tools`. Testing can be done with
 ```pytest```
+
+## ToDo
+[ ] ex1: estimate error instead of binary search
+    [ ] ex1: plot the singular values
+[ ] 
+[ ] start writing latex
+
