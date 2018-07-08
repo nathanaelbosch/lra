@@ -74,10 +74,12 @@ def frobenius_norm(A):
 # 4. Reconstruct tensor from core and basis matrices
 # My implementations has these different parts in different functions
 # @nb.jit
-def compute_base_matrices(A):
+def compute_base_matrices(A, singular_values=False):
     """SVDs of matricisations
 
     Returns a list of the basis matrices
+
+    We need the singular values for error estimation, otherwise not
     """
     dim = len(A.shape)
 
@@ -86,8 +88,11 @@ def compute_base_matrices(A):
     for i in range(dim):
         m = i+1
         mat = m_mode_matricisation(A, m)
-        U, _, _ = np.linalg.svd(mat, full_matrices=False)
-        U_list.append(U)
+        U, Sigma, _ = np.linalg.svd(mat, full_matrices=False)
+        if singular_values:
+            U_list.append((U, Sigma))
+        else:
+            U_list.append(U)
 
     return U_list
 
@@ -139,3 +144,28 @@ def truncated_hosvd(A, ranks, U_list_full=None):
     C, _ = compute_core(A, U_list)
     A_tilde = reconstruct(C, U_list)
     return A_tilde
+
+
+###############################################################################
+# Examples
+###############################################################################
+def aca(A, epsilon):
+    """ACA with full pivoting as in the lecture"""
+    # R0 = A
+    Rk = A
+    I_list = []
+    J_list = []
+    while frobenius_norm(Rk) > epsilon*frobenius_norm(A):
+        i, j = np.unravel_index(Rk.argmax(axis=None), Rk.shape)
+        I_list.append(i)
+        J_list.append(j)
+        delta = Rk[i, j]
+        u = Rk[:, j]
+        v = Rk[i, :].T / delta
+        Rk = Rk - np.outer(u, v)
+
+    R = A[I_list, :]
+    U = np.linalg.inv(A[I_list, :][:, J_list])
+    C = A[:, J_list]
+
+    return C, U, R
