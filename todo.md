@@ -1,4 +1,4 @@
 - [ ] ex1: estimate error instead of binary search
-- [ ] ex1: plot the singular values
-- [ ] 
+    - [ ] ex1: plot the singular values
+- [x] Add a todo file
 - [ ] start writing latex
