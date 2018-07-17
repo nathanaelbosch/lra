@@ -217,8 +217,7 @@ def aca_partial_pivoting(A, epsilon):
     k = 1
     # while k == 1 or u.dot(u)*v.dot(v) > (epsilon*frobenius_norm(A))**2:
     # while frobenius_norm(Rk) > epsilon*frobenius_norm(A):
-    while (k == 1 or
-            np.linalg.norm(u, 2)*np.linalg.norm(v, 2) > epsilon*Ak_norm):
+    while k == 1 or u.dot(u)*v.dot(v) > (epsilon**2)*Ak_norm:
         _Rk = np.abs(Rk[i, :].copy())
         _Rk[J_list] = -1
         j = np.argmax(_Rk)
@@ -257,8 +256,6 @@ def aca_partial_pivoting(A, epsilon):
         _u[I_list] = -1
         i = np.argmax(_u)
 
-
-    # print(I_list)
     R = A[I_good, :]
     U = np.linalg.inv(A[I_good, :][:, J_good])
     C = A[:, J_good]
@@ -266,17 +263,19 @@ def aca_partial_pivoting(A, epsilon):
     return C, U, R
 
 
-def aca_partial_pivoting_functional(f, range, epsilon):
+def aca_partial_pivoting_functional(f, shape, epsilon):
     """Function instead of tensor - Otherwise same functionality as above
 
     In order to take advantage of the partial pivoting we don't want to assume
     that we received the full tensor of function evaluations. Instead we pass
     a function, and evaluate depending on our needs."""
-    m, n = range
+    m, n = shape
     fk = f
     # Rk = np.ones(m, n)
     I_list = []
     J_list = []
+    I_good = []
+    J_good = []
     i = 1
     # while frobenius_norm(Rk) > epsilon*frobenius_norm(A):
 
@@ -287,40 +286,45 @@ def aca_partial_pivoting_functional(f, range, epsilon):
         return new_fk
 
     k = 1
+    Ak_norm = 0
     u_list = []
     v_list = []
-    while k == 1 or np.norm(uk, 2)*np.norm(vk, 2) <= epsilon*Ak_norm:
-        current_row = [fk(i, j) for j in range(n)]
-        j = np.argmax(current_row)
-        delta = f(i, j)
-        if delta == 0:
-            print(len(I_list))
-            print(np.min((m, n)) - 1)
+    while k == 1 or uk.dot(uk)*vk.dot(vk) > (epsilon**2)*Ak_norm:
+        current_row = np.array([fk(i, j) for j in range(n)])
+        _current_row = np.abs(current_row.copy())
+        _current_row[J_list] = -1
+        j = np.argmax(_current_row)
+        delta = fk(i, j)
+        if np.isclose(delta, 0):
             if len(I_list) == np.min((m, n)) - 1:
                 break
         else:
-            current_col = [fk(k, j) for k in range(m)]
-            uk = np.array(current_col)
-            vk = np.array(current_row).T / delta
+            current_col = np.array([fk(k, j) for k in range(m)])
+            uk = current_col
+            vk = current_row.T / delta
             u_list.append(uk)
             v_list.append(vk)
             fk = step(fk, uk, vk)
             # Rk = Rk - np.outer(u, v)
+
+            k += 1
+
+            Ak_norm = (
+                Ak_norm + uk.dot(uk) * vk.dot(vk) +
+                np.sum([uk.T.dot(u_list[l]) * (v_list[l].T).dot(vk)
+                        for l in range(0, k-1)]))
+            I_good.append(i)
+            J_good.append(j)
+
         I_list.append(i)
         J_list.append(j)
 
-        Ak_norm = (Ak_norm + uk.dot(uk) * vk.dot(vk) +
-            np.sum([uk.T.dot(u_list[j]) * (v_list[j].T).dot(vk)
-                    for j in range(0, k-1)]))
-
-        _u = uk.copy()
-        _u[I_list] = np.min(_u)-1
+        _u = np.abs(uk.copy())
+        _u[I_list] = -1
         i = np.argmax(_u)
 
-        k += 1
-
-    R = A[I_list, :]
-    U = np.linalg.inv(A[I_list, :][:, J_list])
-    C = A[:, J_list]
+    R = np.array([[f(i, j) for j in range(n)] for i in I_good])
+    U = np.linalg.inv(np.array([[f(i, j) for j in J_good] for i in I_good]))
+    C = np.array([[f(i, j) for j in J_good] for i in range(m)])
 
     return C, U, R

@@ -1,5 +1,5 @@
 import numpy as np
-from tools import *
+from lra.tools import *
 
 
 # Setup: Some simple example tensors
@@ -21,3 +21,15 @@ def test_matrix_multiplication():
 def test_full_hosvd():
     # Full HOSVD should keep the tensor quite similar
     assert frobenius_norm(full_hosvd(dummy_tensor)-dummy_tensor) < 1e-10
+
+
+def test_f_matricization():
+    B1 = generate_B1(10)
+    B1_matricized = m_mode_matricisation(B1, 1)
+    f1_matricized = functional_m_mode_matricization(f1, B1.shape, 1)
+    other = np.ones_like(B1_matricized)
+    m, n = other.shape
+    for i in range(m):
+        for j in range(n):
+            other[i, j] = f1_matricized(i, j)
+    assert np.allclose(other, B1_matricized)
