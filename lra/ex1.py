@@ -1,7 +1,7 @@
 from .tools import *
 
 
-N=200
+N=300
 B1 = generate_B1(N)
 B2 = generate_B2(N)
 
@@ -30,6 +30,11 @@ for i, A in enumerate((B1, B2)):
         axis=1)
     print('Ranks chosen:', ranks)
 
+    # Verify the result:
+    A_tilde = truncated_hosvd(A, ranks, U_list)
+    assert frobenius_norm(A_tilde - A) < max_error
+
+    """
     if False:
         # 2. Binary search to find ranks
         min_ranks = np.array((0, 0, 0))
@@ -47,7 +52,10 @@ for i, A in enumerate((B1, B2)):
             print(ranks, error)
         print('Final error:', error)
         print('Final ranks:', ranks)
+    """
 
+import sys
+sys.exit(1)
 
 # Plot singular values
 for i, A in enumerate((B1, B2)):

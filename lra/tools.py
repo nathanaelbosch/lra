@@ -1,6 +1,7 @@
 import numpy as np
 import numba as nb
 import matplotlib.pyplot as plt
+import logging
 
 
 N = 200
@@ -15,13 +16,23 @@ def xi(i):
 
 
 @nb.jit
+def f1(i1, i2, i3):
+    return np.sin(xi(i1)+xi(i2)+xi(i3))
+
+
+@nb.jit
 def generate_B1(N):
     B = np.ones((N, N, N))
     for i1 in range(N):
         for i2 in range(N):
             for i3 in range(N):
-                B[i1, i2, i3] = np.sin(xi(i1)+xi(i2)+xi(i3))
+                B[i1, i2, i3] = f1(i1, i2, i3)
     return B
+
+
+@nb.jit
+def f2(i1, i2, i3):
+    return np.sqrt(xi(i1)**2+xi(i2)**2+xi(i3)**2)
 
 
 @nb.jit
@@ -30,7 +41,7 @@ def generate_B2(N):
     for i1 in range(N):
         for i2 in range(N):
             for i3 in range(N):
-                B[i1, i2, i3] = np.sqrt(xi(i1)**2+xi(i2)**2+xi(i3)**2)
+                B[i1, i2, i3] = f2(i1, i2, i3)
     return B
 
 
@@ -62,6 +73,24 @@ def m_mode_matrix_multiplication(A, B, m):
 
 def frobenius_norm(A):
     return np.sqrt(np.sum(A**2))
+
+
+###############################################################################
+# Functions instead of tensors
+###############################################################################
+def functional_m_mode_matricization(f, tensor_shape, m):
+    assert len(tensor_shape) == 3, 'Not implemented for dim>3'
+    n1, n2, n3 = tensor_shape
+
+    def matricized_f(i, j):
+        if m == 1:
+            i1, i2, i3 = i, j % n2, j//n2
+        elif m == 2:
+            i1, i2, i3 = j % n1, i, j//n1
+        elif m == 3:
+            i1, i2, i3 = j % n2, j//n2, i
+        return f(i1, i2, i3)
+    return matricized_f
 
 
 ###############################################################################
@@ -147,22 +176,148 @@ def truncated_hosvd(A, ranks, U_list_full=None):
 
 
 ###############################################################################
-# Examples
+# Regarding Ex 4
 ###############################################################################
-def aca(A, epsilon):
-    """ACA with full pivoting as in the lecture"""
+def aca_full_pivoting(A, epsilon):
+    """ACA with full pivoting as in the lecture
+
+    Takes in a matrix, and returns the """
     # R0 = A
-    Rk = A
+    Rk = A.copy()
     I_list = []
     J_list = []
     while frobenius_norm(Rk) > epsilon*frobenius_norm(A):
-        i, j = np.unravel_index(Rk.argmax(axis=None), Rk.shape)
+        i, j = np.unravel_index(np.argmax(np.abs(Rk), axis=None), Rk.shape)
         I_list.append(i)
         J_list.append(j)
         delta = Rk[i, j]
         u = Rk[:, j]
         v = Rk[i, :].T / delta
         Rk = Rk - np.outer(u, v)
+
+    R = A[I_list, :]
+    U = np.linalg.inv(A[I_list, :][:, J_list])
+    C = A[:, J_list]
+
+    return C, U, R
+
+
+def aca_partial_pivoting(A, epsilon):
+    # R0 = A
+    m, n = A.shape
+    Rk = A.copy()
+    I_list = []
+    J_list = []
+    I_good = []
+    J_good = []
+    u_list = []
+    v_list = []
+    i = 1
+    Ak_norm = 0
+    k = 1
+    # while k == 1 or u.dot(u)*v.dot(v) > (epsilon*frobenius_norm(A))**2:
+    # while frobenius_norm(Rk) > epsilon*frobenius_norm(A):
+    while (k == 1 or
+            np.linalg.norm(u, 2)*np.linalg.norm(v, 2) > epsilon*Ak_norm):
+        _Rk = np.abs(Rk[i, :].copy())
+        _Rk[J_list] = -1
+        j = np.argmax(_Rk)
+        delta = Rk[i, j]
+        # if delta == 0:
+        if np.isclose(delta, 0):
+            # print(len(I_list))
+            # print(np.min((m, n)) - 1)
+            if len(I_list) == np.min((m, n)) - 1:
+                break
+        else:
+            u = Rk[:, j]
+            v = Rk[i, :].T / delta
+
+            Rk = Rk - np.outer(u, v)
+            logging.debug(f'Residual norm: {frobenius_norm(Rk)}')
+            logging.debug(f'Update norm: {np.linalg.norm(u, 2)*np.linalg.norm(v, 2)}')
+            u_list.append(u)
+            v_list.append(v)
+
+            k += 1
+
+            Ak_norm = (Ak_norm + u.dot(u) * v.dot(v) +
+                np.sum([u.T.dot(u_list[l]) * (v_list[l].T).dot(v)
+                        for l in range(0, k-1)]))
+            logging.debug(f'Ak norm: {Ak_norm}')
+
+            I_good.append(i)
+            J_good.append(j)
+
+        # if k <= 3:
+        #     print(i, j)
+        I_list.append(i)
+        J_list.append(j)
+        _u = np.abs(u.copy())
+        _u[I_list] = -1
+        i = np.argmax(_u)
+
+
+    # print(I_list)
+    R = A[I_good, :]
+    U = np.linalg.inv(A[I_good, :][:, J_good])
+    C = A[:, J_good]
+
+    return C, U, R
+
+
+def aca_partial_pivoting_functional(f, range, epsilon):
+    """Function instead of tensor - Otherwise same functionality as above
+
+    In order to take advantage of the partial pivoting we don't want to assume
+    that we received the full tensor of function evaluations. Instead we pass
+    a function, and evaluate depending on our needs."""
+    m, n = range
+    fk = f
+    # Rk = np.ones(m, n)
+    I_list = []
+    J_list = []
+    i = 1
+    # while frobenius_norm(Rk) > epsilon*frobenius_norm(A):
+
+    # We are working in a functional manner
+    def step(fk, u, v):
+        def new_fk(i, j):
+            return fk(i, j) - u[i]*v[j]
+        return new_fk
+
+    k = 1
+    u_list = []
+    v_list = []
+    while k == 1 or np.norm(uk, 2)*np.norm(vk, 2) <= epsilon*Ak_norm:
+        current_row = [fk(i, j) for j in range(n)]
+        j = np.argmax(current_row)
+        delta = f(i, j)
+        if delta == 0:
+            print(len(I_list))
+            print(np.min((m, n)) - 1)
+            if len(I_list) == np.min((m, n)) - 1:
+                break
+        else:
+            current_col = [fk(k, j) for k in range(m)]
+            uk = np.array(current_col)
+            vk = np.array(current_row).T / delta
+            u_list.append(uk)
+            v_list.append(vk)
+            fk = step(fk, uk, vk)
+            # Rk = Rk - np.outer(u, v)
+        I_list.append(i)
+        J_list.append(j)
+
+        Ak_norm = (Ak_norm + uk.dot(uk) * vk.dot(vk) +
+            np.sum([uk.T.dot(u_list[j]) * (v_list[j].T).dot(vk)
+                    for j in range(0, k-1)]))
+
+        _u = uk.copy()
+        _u[I_list] = np.min(_u)-1
+        i = np.argmax(_u)
+
+        k += 1
 
     R = A[I_list, :]
     U = np.linalg.inv(A[I_list, :][:, J_list])
