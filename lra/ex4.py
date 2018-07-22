@@ -1,18 +1,24 @@
-from lra.tools import *
+"""Exercise 4
 
+Computes the required things as written in the exercise description,
+as well as every statement made in the section "Exercise 4" in the report.
+"""
+import time
+import datetime as dt
 
-N = 400
-# B1 = generate_B1(N)
-# B2 = generate_B2(N)
+from .tools import *
+from .aca import *
+
 
 epsilon = 1e-5
 
-# for i, A in enumerate((B1, B2)):
-# for i, (f, A) in enumerate(((f1, B1), (f2, B2))):
-# for i, f in enumerate((f1, f2)):
-for i, f in enumerate((f1, )):
+print('Computes all results stated in the section about exercise 4 ' +
+      'of the report - takes around 5 minutes')
+
+for i, (f, N) in enumerate(((f1, 400), (f2, 400), (f2, 1500))):
+    start = time.time()
     name = 'B1' if i==0 else 'B2'
-    print(f'Working on {name}')
+    print(f'Working on {name} with n={N}')
 
     # Core = A
     dimensions = 3
@@ -20,14 +26,14 @@ for i, f in enumerate((f1, )):
 
     for m in range(1, dimensions+1):
         print(f'Mode {m}')
-        # CUR decomposition of m-mode matricization
-        # Cm, Um, Rm = aca_full_pivoting(Core_mat, 1e-10)
         if m == 1:
+            # Work with the function insted of the tensor
             f_matricized = functional_m_mode_matricization(
                 f, (N, N, N), m)
             Cm, Um, Rm = aca_partial_pivoting_functional(
                 f_matricized, (N, N*N), epsilon)
         else:
+            # We computed the tensor now anyways, so work with the tensor
             Core_mat = m_mode_matricisation(Core, m)
             Cm, Um, Rm = aca_partial_pivoting(Core_mat, epsilon)
 
@@ -43,8 +49,13 @@ for i, f in enumerate((f1, )):
         Core = refold(Um.dot(Rm), m, new_shape)
         C_list.append(Cm)
 
-    # A_tilde = reconstruct(Core, C_list)
-
     ranks = Core.shape
     print(f'Resulting ranks: {ranks}')
+
+    # We can only compute the relative error for small N
+    # A_tilde = reconstruct(Core, C_list)
     # print(f'Relative Error: {frobenius_norm(A_tilde - A) / frobenius_norm(A)}')
+
+    end = time.time()
+    time_needed = dt.timedelta(seconds=end-start)
+    print('Time needed for this computation: {}'.format(time_needed))
